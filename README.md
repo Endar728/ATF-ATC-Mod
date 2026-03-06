@@ -2,6 +2,8 @@
 
 An Air Traffic Control (ATC) mod for Nuclear Option, inspired by LotAtc functionality.
 
+# YOU MUST BE SPAWNED IN AN AIRCRAFT INGAME IN ORDER FOR THIS MOD TO WORK
+
 ## Features
 
 - **Radar Tracking**: Real-time tracking of all units within configurable radar range
@@ -81,6 +83,7 @@ BRAA stands for:
 - The mod uses BepInEx Harmony patches to integrate with the game
 - All tracked units are updated in real-time based on the configured update interval
 - The window is draggable and resizable
+- YOU MUST BE SPAWNED IN AN AIRCRAFT INGAME IN ORDER FOR THIS MOD TO WORK
 - **Radar Coverage**: Optional feature that simulates realistic radar limitations:
   - Terrain masking: Units behind terrain cannot be detected
   - Elevation limits: Units above/below certain altitudes cannot be detected
