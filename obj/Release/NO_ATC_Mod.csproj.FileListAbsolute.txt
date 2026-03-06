@@ -1,0 +1,14 @@
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.csproj.AssemblyReference.cache
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\MyPluginInfo.cs
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.AssemblyInfoInputs.cache
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.AssemblyInfo.cs
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.csproj.CoreCompileInputs.cache
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\NO_ATC_Mod.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\MonoMod.Backports.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\MonoMod.Core.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\MonoMod.Iced.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\MonoMod.ILHelpers.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\bin\Release\System.ValueTuple.dll
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.csproj.Up2Date
+C:\Users\dexte\Desktop\ATF ATC Mod\NO_ATC_Mod\obj\Release\NO_ATC_Mod.dll
