@@ -94,7 +94,3 @@ BRAA stands for:
 - Compatible with BepInEx 5
 - Should work alongside other Nuclear Option mods
 - Tested with NO_Tactitools and NOAutopilot mods
-
-## License
-
-This mod is provided as-is for use with Nuclear Option.
