@@ -16,10 +16,12 @@ An Air Traffic Control (ATC) mod for Nuclear Option, inspired by LotAtc function
 
 ## Installation
 
-1. Ensure you have BepInEx 5 installed for Nuclear Option
-2. Build the mod or download a pre-built release
-3. Place `NO_ATC_Mod.dll` in `BepInEx/plugins/NO_ATC_Mod/`
-4. Launch the game
+1. Ensure you have BepInEx 5 installed for Nuclear Option https://github.com/bepinex/bepinex/releases
+2. Ensure you have BepInEx Configuration Manager https://github.com/BepInEx/BepInEx.ConfigurationManager/releases
+3. Download the 'ATF_ATC_MOD.zip'
+4. Extract the contents of the folder
+5. Place `ATF_ATC_MOD' into your bepinex plugins folder
+6. Launch the game
 
 ## Configuration
 
@@ -89,15 +91,6 @@ BRAA stands for:
 - Compatible with BepInEx 5
 - Should work alongside other Nuclear Option mods
 - Tested with NO_Tactitools and NOAutopilot mods
-
-## Building from Source
-
-1. Install .NET SDK (targets .NET Framework 4.8)
-2. Copy required DLLs from Nuclear Option to `Libs/` folder:
-   - `Assembly-CSharp.dll`
-   - `UnityEngine.CoreModule.dll`
-   - `UnityEngine.UI.dll`
-3. Run `dotnet build -c Release`
 
 ## License
 
