@@ -18,10 +18,18 @@ namespace NO_ATC_Mod.Core
         public string? callsign;
         public float lastUpdateTime;
         public bool isTracked;
+        
+        // Track Number (TN#) - unique 4-digit identifier for each contact
+        public int trackNumber;
+        
+        // Vertical trend indicator
+        public float verticalSpeed; // m/s positive = climbing, negative = descending
+        public VerticalTrend verticalTrend;
 
-        public TrackedUnit(Unit unit, Vector3 playerPosition, FactionHQ playerHQ)
+        public TrackedUnit(Unit unit, Vector3 playerPosition, FactionHQ playerHQ, int assignedTrackNumber)
         {
             this.unit = unit;
+            this.trackNumber = assignedTrackNumber;
             Update(playerPosition, playerHQ);
         }
 
@@ -39,6 +47,15 @@ namespace NO_ATC_Mod.Core
                 altitude = position.y;
                 speed = velocity.magnitude;
                 distance = Vector3.Distance(playerPosition, position);
+                
+                // Calculate vertical speed and trend
+                verticalSpeed = velocity.y;
+                if (verticalSpeed > 2f)
+                    verticalTrend = VerticalTrend.Climbing;
+                else if (verticalSpeed < -2f)
+                    verticalTrend = VerticalTrend.Descending;
+                else
+                    verticalTrend = VerticalTrend.Stable;
                 
                 if (unit.NetworkHQ != null && playerHQ != null)
                 {
@@ -96,6 +113,13 @@ namespace NO_ATC_Mod.Core
         public float AltitudeDiff;
         public float Aspect;
     }
+    
+    public enum VerticalTrend
+    {
+        Stable,     // < 2 m/s vertical speed
+        Climbing,   // > 2 m/s positive
+        Descending  // > 2 m/s negative
+    }
 
     public class RadarSystem
     {
@@ -107,6 +131,63 @@ namespace NO_ATC_Mod.Core
         private List<Unit> cachedUnits = new List<Unit>();
         private float lastUnitCacheTime = 0f;
         private const float UNIT_CACHE_REFRESH_INTERVAL = 5f;
+        
+        // Track Number (TN#) management
+        private int nextTrackNumber = 1001; // Start at 1001 for 4-digit numbers
+        private const int MAX_TRACK_NUMBER = 9999;
+        private HashSet<int> usedTrackNumbers = new HashSet<int>();
+        
+        // Selectable reference point for BRAA (AWACS mode)
+        private Unit? referenceUnit = null;
+        public Unit? ReferenceUnit 
+        { 
+            get => referenceUnit;
+            set => referenceUnit = value;
+        }
+        
+        // Returns position/velocity for BRAA calculations (either player or selected reference)
+        public (Vector3 position, Vector3 velocity) GetReferencePoint()
+        {
+            if (referenceUnit != null && referenceUnit.rb != null)
+            {
+                return (referenceUnit.rb.transform.position, referenceUnit.rb.velocity);
+            }
+            
+            // Default to player aircraft
+            var playerAircraft = GetPlayerAircraft();
+            if (playerAircraft != null && playerAircraft.rb != null)
+            {
+                return (playerAircraft.rb.transform.position, playerAircraft.rb.velocity);
+            }
+            
+            return (Vector3.zero, Vector3.zero);
+        }
+        
+        private int AssignTrackNumber()
+        {
+            // Find next available track number
+            int attempts = 0;
+            while (usedTrackNumbers.Contains(nextTrackNumber) && attempts < MAX_TRACK_NUMBER)
+            {
+                nextTrackNumber++;
+                if (nextTrackNumber > MAX_TRACK_NUMBER)
+                    nextTrackNumber = 1001;
+                attempts++;
+            }
+            
+            int assigned = nextTrackNumber;
+            usedTrackNumbers.Add(assigned);
+            nextTrackNumber++;
+            if (nextTrackNumber > MAX_TRACK_NUMBER)
+                nextTrackNumber = 1001;
+            
+            return assigned;
+        }
+        
+        private void ReleaseTrackNumber(int trackNumber)
+        {
+            usedTrackNumbers.Remove(trackNumber);
+        }
 
         public RadarSystem()
         {
@@ -199,11 +280,24 @@ namespace NO_ATC_Mod.Core
                         
                         if (canDetect)
                         {
+                            // Datalink visibility filter for enemy units
+                            bool isUnitFriendly = (unit.NetworkHQ != null && playerHQ != null && unit.NetworkHQ == playerHQ);
+                            
+                            if (!isUnitFriendly && Plugin.DataLinkOnly.Value && playerHQ != null)
+                            {
+                                // Only show enemies that our faction's datalink is actually tracking
+                                if (!playerHQ.IsTargetPositionAccurate(unit, 20f))
+                                {
+                                    continue;
+                                }
+                            }
+                            
                             unitsInRange.Add(unit);
                             
                             if (!trackedUnits.ContainsKey(unit))
                             {
-                                trackedUnits[unit] = new TrackedUnit(unit, playerPosition, playerHQ);
+                                int tn = AssignTrackNumber();
+                                trackedUnits[unit] = new TrackedUnit(unit, playerPosition, playerHQ, tn);
                             }
                             else
                             {
@@ -224,7 +318,17 @@ namespace NO_ATC_Mod.Core
 
                 foreach (var unit in unitsToRemove)
                 {
+                    if (trackedUnits.TryGetValue(unit, out var tracked))
+                    {
+                        ReleaseTrackNumber(tracked.trackNumber);
+                    }
                     trackedUnits.Remove(unit);
+                    
+                    // Clear reference if it was removed
+                    if (referenceUnit == unit)
+                    {
+                        referenceUnit = null;
+                    }
                 }
             }
             catch (Exception ex)

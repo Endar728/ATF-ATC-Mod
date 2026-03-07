@@ -1007,11 +1007,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\dexte\\Desktop\\ATF ATC Mod\\NO_ATC_Mod\\NO_ATC_Mod.csproj",
+      "projectUniqueName": "C:\\Users\\dexte\\Desktop\\MODDING PROJECTS\\ATF ATC Mod\\ATF_ATC_MOD\\NO_ATC_Mod.csproj",
       "projectName": "NO_ATC_Mod",
-      "projectPath": "C:\\Users\\dexte\\Desktop\\ATF ATC Mod\\NO_ATC_Mod\\NO_ATC_Mod.csproj",
+      "projectPath": "C:\\Users\\dexte\\Desktop\\MODDING PROJECTS\\ATF ATC Mod\\ATF_ATC_MOD\\NO_ATC_Mod.csproj",
       "packagesPath": "C:\\Users\\dexte\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\dexte\\Desktop\\ATF ATC Mod\\NO_ATC_Mod\\obj\\",
+      "outputPath": "C:\\Users\\dexte\\Desktop\\MODDING PROJECTS\\ATF ATC Mod\\ATF_ATC_MOD\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

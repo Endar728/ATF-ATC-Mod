@@ -52,6 +52,21 @@ namespace NO_ATC_Mod
         public static ConfigEntry<float> RadarMaxElevation;
         public static ConfigEntry<float> RadarMinElevation;
         public static ConfigEntry<bool> UseTerrainMasking;
+        
+        // Datalink filter (fair mode for MP)
+        public static ConfigEntry<bool> DataLinkOnly;
+        
+        // List sorting
+        public static ConfigEntry<bool> StableSort;
+        
+        // Altitude display options
+        public static ConfigEntry<bool> UseFlightLevel; // FL350 style vs raw altitude
+        public static ConfigEntry<bool> ShowRelativeAltitude; // Relative to player vs ASL
+        
+        // Label customization (LotATC-style)
+        public static ConfigEntry<string> LabelFormatFriendly;
+        public static ConfigEntry<string> LabelFormatHostile;
+        public static ConfigEntry<bool> ShowTrackNumbers; // Show TN# for unidentified contacts
 
         private void Awake()
         {
@@ -113,6 +128,24 @@ namespace NO_ATC_Mod
                 "Minimum altitude for radar detection in meters");
             UseTerrainMasking = Config.Bind("Radar Coverage", "Use Terrain Masking", false, 
                 "Enable terrain masking (units behind terrain cannot be detected). WARNING: Very aggressive, may only show aircraft directly on final approach.");
+            
+            DataLinkOnly = Config.Bind("Radar", "DataLink Only", true, 
+                "Only show enemy units tracked by your faction's datalink. ON = fair for multiplayer, OFF = full visibility (sandbox/debug).");
+            
+            StableSort = Config.Bind("Display", "Stable Sort", true, 
+                "Keep the contact list order stable (sorted by callsign). OFF = sort by distance (list reorders as units move).");
+            
+            UseFlightLevel = Config.Bind("Display", "Use Flight Level Format", true, 
+                "Show altitude as FL350 style (hundreds of feet) instead of raw altitude. Only applies in Imperial mode.");
+            ShowRelativeAltitude = Config.Bind("Display", "Show Relative Altitude", false, 
+                "Show altitude relative to your aircraft instead of ASL (Above Sea Level).");
+            
+            LabelFormatFriendly = Config.Bind("Labels", "Friendly Label Format", "%(callsign)\n%(alti_short) %(type)",
+                "Label format for friendly aircraft. Available: %(callsign), %(tn), %(alti_short), %(alti_long), %(type), %(gs), %(heading), %(vert_indic)");
+            LabelFormatHostile = Config.Bind("Labels", "Hostile Label Format", "%(tn)\n%(alti_short)",
+                "Label format for hostile/unknown aircraft. Available: %(callsign), %(tn), %(alti_short), %(alti_long), %(type), %(gs), %(heading), %(vert_indic)");
+            ShowTrackNumbers = Config.Bind("Labels", "Show Track Numbers", true, 
+                "Show Track Number (TN#) identifiers for contacts. 4-digit unique ID per track.");
 
             string pluginDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
             Core.GameAssetsLoader.SetIconsFolder(pluginDir ?? "");

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "hOQU29UqQOk=",
+  "dgSpecHash": "iPyMWB0LoI0=",
   "success": true,
-  "projectFilePath": "C:\\Users\\dexte\\Desktop\\ATF ATC Mod\\NO_ATC_Mod\\NO_ATC_Mod.csproj",
+  "projectFilePath": "C:\\Users\\dexte\\Desktop\\MODDING PROJECTS\\ATF ATC Mod\\ATF_ATC_MOD\\NO_ATC_Mod.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\dexte\\.nuget\\packages\\bepinex.analyzers\\1.0.8\\bepinex.analyzers.1.0.8.nupkg.sha512",
     "C:\\Users\\dexte\\.nuget\\packages\\bepinex.baselib\\5.4.20\\bepinex.baselib.5.4.20.nupkg.sha512",

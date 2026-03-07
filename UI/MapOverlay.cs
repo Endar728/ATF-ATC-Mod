@@ -22,45 +22,43 @@ namespace NO_ATC_Mod.UI
         private const float CALLSIGN_CACHE_CLEAR_INTERVAL = 5f; // Clear cache every 5 seconds
         private const float ICON_CACHE_REFRESH_INTERVAL = 1f; // Refresh icon cache every 1 second (much less frequent)
         
-        private string FormatDistance(float meters)
+        // Cached map conversion parameters (derived from AirbaseMapIcon positions)
+        private float cachedMapScale = 0f;
+        private Vector2 cachedMapOffset = Vector2.zero;
+        private bool hasValidConversion = false;
+        private int conversionLockCount = 0; // Track how many times we've tried to calculate
+        private const int MAX_CONVERSION_ATTEMPTS = 3; // Stop trying after 3 successful locks
+        
+        // Use LabelFormatter for consistent formatting
+        private string FormatDistance(float meters) => LabelFormatter.FormatDistance(meters);
+        private string FormatAltitude(float meters, float refAlt = 0f) => LabelFormatter.FormatAltitudeShort(meters, refAlt, null);
+        private string FormatSpeed(float metersPerSecond) => LabelFormatter.FormatSpeed(metersPerSecond, null);
+        
+        // Get reference point (AWACS mode support)
+        private (Vector3 position, Vector3 velocity, float altitude) GetReferencePoint()
         {
-            if (Plugin.UseImperialUnits.Value)
+            var radarSystem = ATCComponent.GetRadarSystem();
+            if (radarSystem != null)
             {
-                float nauticalMiles = meters / 1852f;
-                return $"{nauticalMiles:F1}nm";
+                var (pos, vel) = radarSystem.GetReferencePoint();
+                return (pos, vel, pos.y);
             }
-            else
+            
+            var playerAircraft = ATCComponent.GetPlayerAircraft();
+            if (playerAircraft != null && playerAircraft.rb != null)
             {
-                float kilometers = meters / 1000f;
-                return $"{kilometers:F1}km";
+                var pos = playerAircraft.rb.transform.position;
+                return (pos, playerAircraft.rb.velocity, pos.y);
             }
+            
+            return (Vector3.zero, Vector3.zero, 0f);
         }
         
-        private string FormatAltitude(float meters)
+        // Calculate distance from reference point
+        private float GetDistanceFromReference(Vector3 position)
         {
-            if (Plugin.UseImperialUnits.Value)
-            {
-                float feet = meters / 0.3048f;
-                return $"{feet:F0}ft";
-            }
-            else
-            {
-                return $"{meters:F0}m";
-            }
-        }
-        
-        private string FormatSpeed(float metersPerSecond)
-        {
-            if (Plugin.UseImperialUnits.Value)
-            {
-                float knots = metersPerSecond / 0.514444f;
-                return $"{knots:F0}kt";
-            }
-            else
-            {
-                float kmh = metersPerSecond * 3.6f;
-                return $"{kmh:F0}kmh";
-            }
+            var (refPos, _, _) = GetReferencePoint();
+            return Vector3.Distance(refPos, position);
         }
         
         public void UpdateOverlay()
@@ -109,6 +107,7 @@ namespace NO_ATC_Mod.UI
                     mapImageParent = mapImage;
                     ClearAllLabels(); // Clear old labels when map changes
                     unitIconCache.Clear(); // Clear icon cache when map changes
+                    ResetMapConversion(); // Recalculate conversion for new map
                 }
                 
                 var radarSystem = ATCComponent.GetRadarSystem();
@@ -221,10 +220,240 @@ namespace NO_ATC_Mod.UI
                         unitIconCache[icon.unit] = icon;
                     }
                 }
+                
+                // Derive map conversion from STATIC airbase icons (only if not already calculated)
+                if (!hasValidConversion)
+                {
+                    UpdateMapConversionFromAirbases();
+                }
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogError($"[MapOverlay] Error refreshing icon cache: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Calculate the proper world-to-map coordinate conversion using existing map icons.
+        /// We try AirbaseMapIcon first (static), then UnitMapIcon (dynamic but only sampled once).
+        /// </summary>
+        private void UpdateMapConversionFromAirbases()
+        {
+            // Don't recalculate if already locked successfully
+            if (hasValidConversion && conversionLockCount >= MAX_CONVERSION_ATTEMPTS)
+            {
+                return;
+            }
+            
+            try
+            {
+                // First, try to use the DynamicMap's own conversion method
+                var map = SceneSingleton<DynamicMap>.i;
+                if (map != null)
+                {
+                    var mapType = map.GetType();
+                    var mapDimensionField = mapType.GetField("mapDimension");
+                    if (mapDimensionField != null)
+                    {
+                        var dimValue = mapDimensionField.GetValue(map);
+                        if (dimValue != null)
+                        {
+                            float mapDimension = (float)dimValue;
+                            float factor = 900f / mapDimension;
+                            
+                            Plugin.Log?.LogInfo($"[MapOverlay] Map factor calculated: {factor:F6} (mapDimension={mapDimension})");
+                            
+                            // Try 1: Use AirbaseMapIcon (static, preferred)
+                            var airbaseIcons = UnityEngine.Object.FindObjectsOfType<AirbaseMapIcon>();
+                            Plugin.Log?.LogInfo($"[MapOverlay] Found {airbaseIcons?.Length ?? 0} AirbaseMapIcon objects");
+                            
+                            if (airbaseIcons != null && airbaseIcons.Length > 0)
+                            {
+                                foreach (var airbaseIcon in airbaseIcons)
+                                {
+                                    if (airbaseIcon == null || airbaseIcon.transform == null) continue;
+                                    
+                                    // Log all fields on the airbase icon for debugging
+                                    var iconType = airbaseIcon.GetType();
+                                    var allFields = iconType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                    Plugin.Log?.LogInfo($"[MapOverlay] AirbaseMapIcon fields: {string.Join(", ", allFields.Select(f => f.Name))}");
+                                    
+                                    // Try to get the airbase's world position - check all possible field names
+                                    Vector3 worldPos = Vector3.zero;
+                                    bool foundWorldPos = false;
+                                    
+                                    // Try various field names that might contain the world position reference
+                                    string[] possibleFieldNames = { "airbase", "unit", "targetUnit", "target", "linkedUnit", "baseUnit" };
+                                    
+                                    foreach (var fieldName in possibleFieldNames)
+                                    {
+                                        var field = iconType.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                                        if (field != null)
+                                        {
+                                            var value = field.GetValue(airbaseIcon);
+                                            if (value != null)
+                                            {
+                                                // Try to get transform from it
+                                                var component = value as Component;
+                                                if (component != null && component.transform != null)
+                                                {
+                                                    worldPos = component.transform.position;
+                                                    foundWorldPos = true;
+                                                    Plugin.Log?.LogInfo($"[MapOverlay] Got world pos from AirbaseMapIcon.{fieldName}: {worldPos}");
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (foundWorldPos && worldPos.sqrMagnitude > 100f)
+                                    {
+                                        Vector3 mapPos = airbaseIcon.transform.localPosition;
+                                        Vector3 factorPos = new Vector3(worldPos.x * factor, worldPos.z * factor, 0f);
+                                        
+                                        cachedMapOffset = new Vector2(
+                                            mapPos.x - factorPos.x,
+                                            mapPos.y - factorPos.y
+                                        );
+                                        cachedMapScale = factor;
+                                        hasValidConversion = true;
+                                        conversionLockCount++;
+                                        
+                                        Plugin.Log?.LogInfo($"[MapOverlay] Map conversion LOCKED via AirbaseMapIcon (attempt {conversionLockCount}): " +
+                                            $"factor={factor:F6}, offset=({cachedMapOffset.x:F1}, {cachedMapOffset.y:F1}), " +
+                                            $"worldPos={worldPos}, mapPos={mapPos}");
+                                        return;
+                                    }
+                                }
+                            }
+                            
+                            // Try 2: Use UnitMapIcon (dynamic, but we only sample once)
+                            // This works because even though units move, the conversion formula is constant
+                            if (unitIconCache.Count > 0)
+                            {
+                                Plugin.Log?.LogInfo($"[MapOverlay] Trying UnitMapIcon conversion (have {unitIconCache.Count} cached icons)");
+                                
+                                foreach (var kvp in unitIconCache)
+                                {
+                                    var unit = kvp.Key;
+                                    var unitIcon = kvp.Value;
+                                    
+                                    if (unit == null || unitIcon == null || unitIcon.transform == null)
+                                        continue;
+                                    
+                                    Vector3 worldPos = unit.transform.position;
+                                    Vector3 mapPos = unitIcon.transform.localPosition;
+                                    
+                                    // Skip units at origin or with zero map position
+                                    if (worldPos.sqrMagnitude < 100f || mapPos.sqrMagnitude < 1f)
+                                        continue;
+                                    
+                                    Vector3 factorPos = new Vector3(worldPos.x * factor, worldPos.z * factor, 0f);
+                                    
+                                    cachedMapOffset = new Vector2(
+                                        mapPos.x - factorPos.x,
+                                        mapPos.y - factorPos.y
+                                    );
+                                    cachedMapScale = factor;
+                                    hasValidConversion = true;
+                                    conversionLockCount++;
+                                    
+                                    Plugin.Log?.LogInfo($"[MapOverlay] Map conversion LOCKED via UnitMapIcon (attempt {conversionLockCount}): " +
+                                        $"factor={factor:F6}, offset=({cachedMapOffset.x:F1}, {cachedMapOffset.y:F1}), " +
+                                        $"worldPos={worldPos}, mapPos={mapPos}, unit={unit.name}");
+                                    return;
+                                }
+                            }
+                            
+                            // Try 3: Use ALL UnitMapIcons fresh (not from cache)
+                            var allUnitIcons = UnityEngine.Object.FindObjectsOfType<UnitMapIcon>();
+                            Plugin.Log?.LogInfo($"[MapOverlay] Found {allUnitIcons?.Length ?? 0} total UnitMapIcon objects");
+                            
+                            if (allUnitIcons != null && allUnitIcons.Length > 0)
+                            {
+                                foreach (var unitIcon in allUnitIcons)
+                                {
+                                    if (unitIcon == null || unitIcon.transform == null || unitIcon.unit == null)
+                                        continue;
+                                    
+                                    Vector3 worldPos = unitIcon.unit.transform.position;
+                                    Vector3 mapPos = unitIcon.transform.localPosition;
+                                    
+                                    // Skip units at origin or with zero map position
+                                    if (worldPos.sqrMagnitude < 100f || mapPos.sqrMagnitude < 1f)
+                                        continue;
+                                    
+                                    Vector3 factorPos = new Vector3(worldPos.x * factor, worldPos.z * factor, 0f);
+                                    
+                                    cachedMapOffset = new Vector2(
+                                        mapPos.x - factorPos.x,
+                                        mapPos.y - factorPos.y
+                                    );
+                                    cachedMapScale = factor;
+                                    hasValidConversion = true;
+                                    conversionLockCount++;
+                                    
+                                    Plugin.Log?.LogInfo($"[MapOverlay] Map conversion LOCKED via fresh UnitMapIcon (attempt {conversionLockCount}): " +
+                                        $"factor={factor:F6}, offset=({cachedMapOffset.x:F1}, {cachedMapOffset.y:F1}), " +
+                                        $"worldPos={worldPos}, mapPos={mapPos}, unit={unitIcon.unit.name}");
+                                    return;
+                                }
+                            }
+                            
+                            // Fallback: Use just factor with zero offset (will likely be wrong, but at least shows something)
+                            if (!hasValidConversion)
+                            {
+                                cachedMapScale = factor;
+                                cachedMapOffset = Vector2.zero;
+                                hasValidConversion = true;
+                                conversionLockCount++;
+                                
+                                Plugin.Log?.LogWarning($"[MapOverlay] Map conversion LOCKED (FALLBACK - no icons found, attempt {conversionLockCount}): " +
+                                    $"factor={factor:F6}, offset=(0, 0). Map positions may be incorrect!");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogWarning($"[MapOverlay] Error calculating map conversion: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Convert a world position to map coordinates using the derived conversion
+        /// </summary>
+        private Vector3 WorldToMapPosition(Vector3 worldPos)
+        {
+            if (hasValidConversion)
+            {
+                // Use derived conversion: mapPos = worldPos * scale + offset
+                return new Vector3(
+                    worldPos.x * cachedMapScale + cachedMapOffset.x,
+                    worldPos.z * cachedMapScale + cachedMapOffset.y,
+                    0f
+                );
+            }
+            else
+            {
+                // Fallback to simple factor-based conversion
+                var map = SceneSingleton<DynamicMap>.i;
+                if (map != null)
+                {
+                    var mapType = map.GetType();
+                    var mapDimensionField = mapType.GetField("mapDimension");
+                    float mapDimension = 900f;
+                    if (mapDimensionField != null)
+                    {
+                        var dimValue = mapDimensionField.GetValue(map);
+                        if (dimValue != null)
+                            mapDimension = (float)dimValue;
+                    }
+                    float factor = 900f / mapDimension;
+                    return new Vector3(worldPos.x * factor, worldPos.z * factor, 0f);
+                }
+                return new Vector3(worldPos.x, worldPos.z, 0f);
             }
         }
         
@@ -331,26 +560,56 @@ namespace NO_ATC_Mod.UI
                 {
                     StringBuilder sb = new StringBuilder();
                     
-                    // First line: Unit name (with player name if available)
+                    // First line: Unit name with TN# (if enabled) and vertical indicator
                     string displayName = GetUnitDisplayName(tracked);
-                    sb.AppendLine(displayName);
+                    string vertIndicator = LabelFormatter.GetVerticalIndicator(tracked.verticalTrend, "nostable");
+                    
+                    // Show TN# for all units if enabled
+                    if (Plugin.ShowTrackNumbers.Value)
+                    {
+                        // Show TN# plus callsign for friendlies, just TN# for hostiles
+                        if (tracked.isFriendly)
+                        {
+                            sb.Append($"TN#{tracked.trackNumber} {displayName}");
+                        }
+                        else
+                        {
+                            sb.Append($"TN#{tracked.trackNumber}");
+                        }
+                        if (!string.IsNullOrEmpty(vertIndicator))
+                            sb.Append($" {vertIndicator}");
+                        sb.AppendLine();
+                    }
+                    else
+                    {
+                        sb.Append(displayName);
+                        if (!string.IsNullOrEmpty(vertIndicator))
+                            sb.Append($" {vertIndicator}");
+                        sb.AppendLine();
+                    }
+                    
+                    // Get reference point altitude (AWACS mode support)
+                    var (refPos, refVel, refAlt) = GetReferencePoint();
+                    
+                    // Calculate distance from reference point (not from player if in AWACS mode)
+                    float distFromRef = Vector3.Distance(refPos, tracked.position);
                     
                     // Additional info lines (compact format)
                     if (Plugin.MapOverlayShowDistance.Value)
                     {
-                        sb.Append($"RNG {FormatDistance(tracked.distance)} ");
+                        sb.Append($"{FormatDistance(distFromRef)} ");
                     }
                     if (Plugin.MapOverlayShowAltitude.Value)
                     {
-                        sb.Append($"ALT {FormatAltitude(tracked.altitude)} ");
+                        sb.Append($"{FormatAltitude(tracked.altitude, refAlt)} ");
                     }
                     if (Plugin.MapOverlayShowSpeed.Value)
                     {
-                        sb.Append($"SPD {FormatSpeed(tracked.speed)} ");
+                        sb.Append($"{FormatSpeed(tracked.speed)} ");
                     }
                     if (Plugin.MapOverlayShowHeading.Value)
                     {
-                        sb.Append($"HDG {tracked.heading:F0}°");
+                        sb.Append($"{tracked.heading:F0}°");
                     }
                     
                     text.text = sb.ToString().Trim();
@@ -482,6 +741,20 @@ namespace NO_ATC_Mod.UI
             }
             overlayLabels.Clear();
             unitIconCache.Clear(); // Also clear icon cache
+            // Note: DON'T reset hasValidConversion here - the conversion should stay stable
+            // It only needs to be recalculated when the map itself changes
+        }
+        
+        /// <summary>
+        /// Force recalculation of map conversion (call when map changes)
+        /// </summary>
+        public void ResetMapConversion()
+        {
+            hasValidConversion = false;
+            cachedMapScale = 0f;
+            cachedMapOffset = Vector2.zero;
+            conversionLockCount = 0; // Reset lock count to allow recalculation
+            Plugin.Log?.LogInfo("[MapOverlay] Map conversion reset, will recalculate");
         }
         
         void OnDestroy()

@@ -19,10 +19,12 @@ namespace NO_ATC_Mod.UI
         private GUIStyle headerRowStyle;
         private bool stylesInitialized = false;
         
-        private const int ColCallsign = 160;
+        private const int ColCallsign = 140;
+        private const int ColTN = 50;
         private const int ColRng = 56;
         private const int ColBrg = 40;
         private const int ColAlt = 64;
+        private const int ColVert = 20;
         private const int ColHdg = 40;
         private const int ColSpd = 48;
         
@@ -53,17 +55,15 @@ namespace NO_ATC_Mod.UI
             }
         }
         
-        private string FormatAltitude(float meters)
+        private string FormatAltitude(float meters, float playerAltitude = 0f)
         {
-            if (Plugin.UseImperialUnits.Value)
-            {
-                float feet = meters / 0.3048f;
-                return $"{feet:F0} ft";
-            }
-            else
-            {
-                return $"{meters:F0} m";
-            }
+            // Use the new LabelFormatter for consistent altitude formatting
+            return LabelFormatter.FormatAltitudeLong(meters, playerAltitude);
+        }
+        
+        private string FormatAltitudeShort(float meters, float playerAltitude = 0f)
+        {
+            return LabelFormatter.FormatAltitudeShort(meters, playerAltitude, null);
         }
         
         private string FormatSpeed(float metersPerSecond)
@@ -387,6 +387,26 @@ namespace NO_ATC_Mod.UI
 
                 var oldColor = GUI.color;
                 GUILayout.BeginVertical(contentBgStyle);
+                
+                // AWACS Mode indicator (prominent banner when active)
+                var radarSystemRef = ATCComponent.GetRadarSystem();
+                if (radarSystemRef != null && radarSystemRef.ReferenceUnit != null)
+                {
+                    GUI.backgroundColor = new Color(0.2f, 0.4f, 0.6f, 1f);
+                    GUILayout.BeginHorizontal(RowBoxStyle);
+                    GUI.color = Color.yellow;
+                    GUILayout.Label($"★ AWACS MODE ★ Reference: {radarSystemRef.ReferenceUnit.gameObject.name}", headerRowStyle);
+                    GUI.color = oldColor;
+                    if (GUILayout.Button("X", GUILayout.Width(24), GUILayout.Height(20)))
+                    {
+                        radarSystemRef.ReferenceUnit = null;
+                        Plugin.Log.LogInfo("[ATCWindow] AWACS reference cleared");
+                    }
+                    GUILayout.EndHorizontal();
+                    GUI.backgroundColor = Color.white;
+                    GUILayout.Space(2);
+                }
+                
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("ATC", headerStyle, GUILayout.Width(36));
                 GUILayout.Label($"{trackedUnits.Count} ct", dataStyle, GUILayout.Width(40));
@@ -448,11 +468,28 @@ namespace NO_ATC_Mod.UI
                 }
                 else if (selectedTarget1 != null && Plugin.ShowBRAA.Value)
                 {
-                    var braa = selectedTarget1.CalculateBRAA(playerPos, playerVel);
+                    // Use reference point (AWACS mode) if set, otherwise use player
+                    var radarSys = ATCComponent.GetRadarSystem();
+                    var (refPos, refVel) = radarSys != null ? radarSys.GetReferencePoint() : (playerPos, playerVel);
+                    bool isAwacsMode = radarSys?.ReferenceUnit != null;
+                    string refLabel = isAwacsMode ? "[AWACS] " : "";
+                    
+                    var braa = selectedTarget1.CalculateBRAA(refPos, refVel);
                     string altDiff = braa.AltitudeDiff >= 0 ? "+" : "";
                     GUI.color = Color.cyan;
-                    GUILayout.Label($"BRAA {braa.Bearing:F0}° / {FormatDistance(braa.Range)} / {FormatAltitude(braa.Altitude)} {altDiff}{FormatAltitude(Mathf.Abs(braa.AltitudeDiff))} / Asp {braa.Aspect:F0}°", dataStyle);
+                    GUILayout.Label($"{refLabel}BRAA {braa.Bearing:F0}° / {FormatDistance(braa.Range)} / {FormatAltitudeShort(braa.Altitude, refPos.y)} {altDiff}{FormatAltitudeShort(Mathf.Abs(braa.AltitudeDiff), 0)} / Asp {braa.Aspect:F0}°", dataStyle);
                     GUI.color = oldColor;
+                    
+                    // Quick button to set selected as AWACS reference
+                    if (radarSys != null && selectedTarget1.unit != radarSys.ReferenceUnit)
+                    {
+                        if (GUILayout.Button("Set Ref", GUILayout.Width(52), GUILayout.Height(16)))
+                        {
+                            radarSys.ReferenceUnit = selectedTarget1.unit;
+                            Plugin.Log.LogInfo($"[ATCWindow] AWACS reference set to: {selectedTarget1.unit?.gameObject.name}");
+                        }
+                    }
+                    
                     if (GUILayout.Button("Clear", GUILayout.Width(44), GUILayout.Height(16)))
                         selectedTarget1 = null;
                 }
@@ -466,9 +503,12 @@ namespace NO_ATC_Mod.UI
                 // ---- Column headers ----
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("CALLSIGN", headerRowStyle, GUILayout.Width(ColCallsign));
+                if (Plugin.ShowTrackNumbers.Value)
+                    GUILayout.Label("TN#", headerRowStyle, GUILayout.Width(ColTN));
                 GUILayout.Label("RNG", headerRowStyle, GUILayout.Width(ColRng));
                 GUILayout.Label("BRG", headerRowStyle, GUILayout.Width(ColBrg));
                 GUILayout.Label("ALT", headerRowStyle, GUILayout.Width(ColAlt));
+                GUILayout.Label("", headerRowStyle, GUILayout.Width(ColVert)); // Vertical indicator
                 GUILayout.Label("HDG", headerRowStyle, GUILayout.Width(ColHdg));
                 GUILayout.Label("SPD", headerRowStyle, GUILayout.Width(ColSpd));
                 GUILayout.EndHorizontal();
@@ -479,7 +519,18 @@ namespace NO_ATC_Mod.UI
                     var filteredUnits = trackedUnits.Where(u =>
                         (u.isFriendly && Plugin.ShowFriendly.Value) ||
                         (!u.isFriendly && Plugin.ShowHostile.Value)).ToList();
-                    var sortedUnits = filteredUnits.OrderBy(u => u.distance).ToList();
+                    
+                    List<TrackedUnit> sortedUnits;
+                    if (Plugin.StableSort.Value)
+                    {
+                        // Sort by callsign for stable ordering (doesn't jump around as units move)
+                        sortedUnits = filteredUnits.OrderBy(u => GetUnitDisplayName(u)).ToList();
+                    }
+                    else
+                    {
+                        // Sort by distance (classic behavior, but list reorders frequently)
+                        sortedUnits = filteredUnits.OrderBy(u => u.distance).ToList();
+                    }
 
                     if (sortedUnits.Count == 0)
                     {
@@ -499,7 +550,7 @@ namespace NO_ATC_Mod.UI
                             if (isSel) GUI.backgroundColor = Color.white;
 
                             string call = GetUnitDisplayName(tracked);
-                            if (call.Length > 14) call = call.Substring(0, 12) + "..";
+                            if (call.Length > 12) call = call.Substring(0, 10) + "..";
                             GUI.color = tracked.isFriendly ? Color.green : Color.red;
                             if (GUILayout.Button(call, dataStyle, GUILayout.Width(ColCallsign), GUILayout.Height(18)))
                             {
@@ -511,9 +562,22 @@ namespace NO_ATC_Mod.UI
                             }
                             GUI.color = oldColor;
 
+                            // Track Number column
+                            if (Plugin.ShowTrackNumbers.Value)
+                                GUILayout.Label(tracked.trackNumber.ToString(), dataStyle, GUILayout.Width(ColTN));
+                            
                             GUILayout.Label(FormatRngCell(tracked.distance), dataStyle, GUILayout.Width(ColRng));
                             GUILayout.Label(FormatBearing(brg), dataStyle, GUILayout.Width(ColBrg));
-                            GUILayout.Label(FormatAltCell(tracked.altitude), dataStyle, GUILayout.Width(ColAlt));
+                            GUILayout.Label(FormatAltitudeShort(tracked.altitude, playerPos.y), dataStyle, GUILayout.Width(ColAlt));
+                            
+                            // Vertical trend indicator
+                            string vertIndicator = LabelFormatter.GetVerticalIndicator(tracked.verticalTrend, null);
+                            Color vertColor = tracked.verticalTrend == VerticalTrend.Climbing ? Color.cyan :
+                                             tracked.verticalTrend == VerticalTrend.Descending ? Color.yellow : Color.gray;
+                            GUI.color = vertColor;
+                            GUILayout.Label(vertIndicator, dataStyle, GUILayout.Width(ColVert));
+                            GUI.color = oldColor;
+                            
                             GUILayout.Label(FormatBearing(tracked.heading), dataStyle, GUILayout.Width(ColHdg));
                             GUILayout.Label(FormatSpdCell(tracked.speed), dataStyle, GUILayout.Width(ColSpd));
                             GUILayout.EndHorizontal();
@@ -662,7 +726,97 @@ namespace NO_ATC_Mod.UI
                 
                 GUILayout.Space(5);
                 
+                GUILayout.Label("Altitude Display:", headerStyle);
+                Plugin.UseFlightLevel.Value = GUILayout.Toggle(Plugin.UseFlightLevel.Value, "Use Flight Level Format (FL350 style)");
+                Plugin.ShowRelativeAltitude.Value = GUILayout.Toggle(Plugin.ShowRelativeAltitude.Value, "Show Relative Altitude (vs your aircraft)");
+                
+                GUILayout.Space(5);
+                
+                GUILayout.Label("Track Numbers & Labels:", headerStyle);
+                Plugin.ShowTrackNumbers.Value = GUILayout.Toggle(Plugin.ShowTrackNumbers.Value, "Show Track Numbers (TN#)");
+                
+                GUILayout.Space(5);
+                
+                // AWACS Mode - Reference Point Selection
+                GUILayout.Label("AWACS Mode (Reference Point):", headerStyle);
+                GUILayout.Label("All BRAA/distance calculations will be relative to the selected reference unit.", labelStyle);
+                GUILayout.Label("Great for controlling other aircraft from an AWACS position!", labelStyle);
+                GUILayout.Space(3);
+                
+                var radarSystem = ATCComponent.GetRadarSystem();
+                if (radarSystem != null)
+                {
+                    Unit currentRef = radarSystem.ReferenceUnit;
+                    bool awacsActive = currentRef != null;
+                    
+                    // Status box
+                    if (awacsActive)
+                    {
+                        GUI.backgroundColor = new Color(0.2f, 0.5f, 0.3f, 1f);
+                    }
+                    else
+                    {
+                        GUI.backgroundColor = new Color(0.3f, 0.3f, 0.4f, 1f);
+                    }
+                    
+                    GUILayout.BeginVertical(RowBoxStyle);
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Status:", labelStyle, GUILayout.Width(60));
+                    if (awacsActive)
+                    {
+                        GUI.color = Color.green;
+                        GUILayout.Label($"ACTIVE - {currentRef.gameObject.name}", dataStyle);
+                        GUI.color = oldColor;
+                    }
+                    else
+                    {
+                        GUI.color = Color.gray;
+                        GUILayout.Label("OFF - Using Player Aircraft", dataStyle);
+                        GUI.color = oldColor;
+                    }
+                    GUILayout.EndHorizontal();
+                    GUILayout.EndVertical();
+                    GUI.backgroundColor = Color.white;
+                    
+                    GUILayout.Space(3);
+                    
+                    GUILayout.BeginHorizontal();
+                    if (awacsActive)
+                    {
+                        if (GUILayout.Button("Disable AWACS Mode", GUILayout.Height(24)))
+                        {
+                            radarSystem.ReferenceUnit = null;
+                            Plugin.Log.LogInfo("[ATCWindow] AWACS mode disabled");
+                        }
+                    }
+                    
+                    if (selectedTarget1 != null && selectedTarget1.unit != currentRef)
+                    {
+                        string btnText = awacsActive ? $"Change to '{GetUnitDisplayName(selectedTarget1)}'" : $"Set '{GetUnitDisplayName(selectedTarget1)}' as Reference";
+                        if (GUILayout.Button(btnText, GUILayout.Height(24)))
+                        {
+                            radarSystem.ReferenceUnit = selectedTarget1.unit;
+                            Plugin.Log.LogInfo($"[ATCWindow] Reference point set to: {selectedTarget1.unit?.gameObject.name}");
+                        }
+                    }
+                    else if (selectedTarget1 == null && !awacsActive)
+                    {
+                        GUI.enabled = false;
+                        GUILayout.Button("Select a contact in the list to enable AWACS mode", GUILayout.Height(24));
+                        GUI.enabled = true;
+                    }
+                    GUILayout.EndHorizontal();
+                    
+                    GUILayout.Space(3);
+                    GUILayout.Label("TIP: Click a unit row in the radar list, then click 'Set Ref' or use the button above.", labelStyle);
+                }
+                
+                GUILayout.Space(5);
+                
                 GUILayout.Label("Radar Settings:", headerStyle);
+                Plugin.DataLinkOnly.Value = GUILayout.Toggle(Plugin.DataLinkOnly.Value, "DataLink Only (fair for MP, hides untracked enemies)");
+                Plugin.StableSort.Value = GUILayout.Toggle(Plugin.StableSort.Value, "Stable Sort (sort by callsign, list doesn't jump)");
+                
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Range (m):", labelStyle, GUILayout.Width(100));
                 string rangeStr = GUILayout.TextField(Plugin.RadarRange.Value.ToString("F0"), GUILayout.Width(100));
