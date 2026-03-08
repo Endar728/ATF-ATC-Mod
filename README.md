@@ -1,4 +1,4 @@
-# NO ATC Mod
+# ATF ATC Mod
 
 An Air Traffic Control (ATC) mod for Nuclear Option, inspired by LotAtc functionality.
 

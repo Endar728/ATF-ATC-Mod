@@ -124,6 +124,11 @@ namespace NO_ATC_Mod.Core
             {
                 displayAlt = altitudeMeters - playerAltitude;
             }
+            else
+            {
+                // Clamp ASL altitude to 0 minimum (no negative altitudes for above sea level)
+                displayAlt = Mathf.Max(0f, altitudeMeters);
+            }
             
             if (Plugin.UseImperialUnits.Value)
             {
@@ -171,6 +176,11 @@ namespace NO_ATC_Mod.Core
             {
                 displayAlt = altitudeMeters - playerAltitude;
                 prefix = displayAlt >= 0 ? "+" : "";
+            }
+            else
+            {
+                // Clamp ASL altitude to 0 minimum (no negative altitudes for above sea level)
+                displayAlt = Mathf.Max(0f, altitudeMeters);
             }
             
             if (Plugin.UseImperialUnits.Value)

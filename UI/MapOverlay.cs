@@ -503,7 +503,7 @@ namespace NO_ATC_Mod.UI
                 
                 Text text = textObj.AddComponent<Text>();
                 text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-                text.fontSize = 8; // Smaller font size
+                text.fontSize = 11; // Increased from 8 for better readability on 1080p
                 text.color = Plugin.ATCColor.Value;
                 text.alignment = TextAnchor.UpperLeft;
                 text.horizontalOverflow = HorizontalWrapMode.Overflow;

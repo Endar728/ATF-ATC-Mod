@@ -223,6 +223,23 @@ namespace NO_ATC_Mod.Core
                     
                     if (unit is Missile) continue;
 
+                    // Skip dismounted pilots - they shouldn't be tracked
+                    // These appear even when pilots are filtered in the sidebar, so we filter them here
+                    if (unit.gameObject != null)
+                    {
+                        string unitName = unit.gameObject.name.ToLower();
+                        string unitTypeName = unit.GetType().Name.ToLower();
+                        
+                        // Skip dismounted pilots (check both name and type)
+                        if (unitName.Contains("dismountedpilot") || 
+                            unitName.Contains("dismounted_pilot") ||
+                            unitTypeName == "dismountedpilot" ||
+                            (unitTypeName.Contains("pilot") && !unitTypeName.Contains("aircraft")))
+                        {
+                            continue;
+                        }
+                    }
+
                     bool isAircraft = unit is Aircraft;
                     bool isGround = unit is GroundVehicle;
                     bool isBuilding = unit is Building;
