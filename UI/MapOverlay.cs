@@ -233,10 +233,7 @@ namespace NO_ATC_Mod.UI
             }
         }
         
-        /// <summary>
-        /// Calculate the proper world-to-map coordinate conversion using existing map icons.
-        /// We try AirbaseMapIcon first (static), then UnitMapIcon (dynamic but only sampled once).
-        /// </summary>
+        /// Calculate the proper world-to-map coordinate conversion using existing map icons. AirbaseMapIcon first (static), then UnitMapIcon (dynamic but only sampled once).
         private void UpdateMapConversionFromAirbases()
         {
             // Don't recalculate if already locked successfully
@@ -626,7 +623,7 @@ namespace NO_ATC_Mod.UI
         {
             if (tracked.unit == null) return "Unknown";
             
-            Aircraft? aircraft = tracked.unit as Aircraft;
+            Aircraft aircraft = tracked.unit as Aircraft;
             
             if (aircraft != null)
             {
@@ -745,9 +742,7 @@ namespace NO_ATC_Mod.UI
             // It only needs to be recalculated when the map itself changes
         }
         
-        /// <summary>
         /// Force recalculation of map conversion (call when map changes)
-        /// </summary>
         public void ResetMapConversion()
         {
             hasValidConversion = false;

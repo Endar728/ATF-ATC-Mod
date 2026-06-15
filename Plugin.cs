@@ -172,7 +172,7 @@ namespace NO_ATC_Mod
             }
         }
 
-        private System.Reflection.Assembly? OnAssemblyResolve(object? sender, ResolveEventArgs args)
+        private System.Reflection.Assembly OnAssemblyResolve(object sender, ResolveEventArgs args)
         {
             if (args.Name.StartsWith("MonoMod.Backports") || args.Name.StartsWith("MonoMod.ILHelpers"))
             {
