@@ -29,8 +29,8 @@ namespace NO_ATC_Mod.UI
         private const int ColSpd = 48;
         
         private Dictionary<Aircraft, string> callsignCache = new Dictionary<Aircraft, string>();
-        private TrackedUnit? selectedTarget1 = null;
-        private TrackedUnit? selectedTarget2 = null;
+        private TrackedUnit selectedTarget1 = null;
+        private TrackedUnit selectedTarget2 = null;
         
         // Settings panel state
         private bool showSettingsPanel = false;
@@ -940,7 +940,7 @@ namespace NO_ATC_Mod.UI
             if (tracked.unit == null) return "Unknown";
             
             string unitName = tracked.unit.gameObject.name;
-            Aircraft? aircraft = tracked.unit as Aircraft;
+            Aircraft aircraft = tracked.unit as Aircraft;
             
             if (aircraft != null)
             {
